@@ -99,25 +99,34 @@ void commands_explanation(const vector<Command> &commands)
   }
 }
 
+void exec(Command &command) {
+  execvp(command.filename(), command.argv());
+}
+
+Command chopBg(Command &command) {
+  Command chopedCommand;
+  for (int i = 1; i < command.args().size(); i++) {
+    chopedCommand.add_arg(command.argv()[i]);
+  }
+  return chopedCommand;
+}
+
 int process(const vector<Command> &commands)
 {
 
-  Command c = commands[0];
+  Command command = commands[0];
   pid_t pid = fork();
+  thread th1;
 
   if (pid == 0)
   {
-    if (!strcmp(c.filename(), "bg"))
+    if (!strcmp(command.filename(), "bg"))
     {
-      Command nc;
-      for (int i = 1; i < c.args().size(); i++)
-      {
-        nc.add_arg(c.argv()[i]);
-      }
-      execvp(nc.filename(), nc.argv());
+      Command newCommand = chopBg(command);
+      exec(newCommand);
     }
 
-    execvp(c.filename(), c.argv());
+    exec(command);
   }
 
   wait(NULL);
