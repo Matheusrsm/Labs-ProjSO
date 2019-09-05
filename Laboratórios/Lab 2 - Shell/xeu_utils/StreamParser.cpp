@@ -5,34 +5,43 @@
 #include <string>
 #include <iostream>
 
-namespace xeu_utils {
+namespace xeu_utils
+{
 
-StreamParser::StreamParser(const std::string& line_prefix, bool handle_errors)
-  : line_prefix_(line_prefix), handle_errors_(handle_errors) {}
+StreamParser::StreamParser(const std::string &line_prefix, bool handle_errors)
+    : line_prefix_(line_prefix), handle_errors_(handle_errors) {}
 
 ParsingState StreamParser::parse(
-  std::string& unparsed_input,
-  std::istream& input,
-  std::ostream& output
-) const {
+    std::string &unparsed_input,
+    std::istream &input,
+    std::ostream &output) const
+{
   ParsingState p;
   std::string s;
   unparsed_input = "";
-  while (!p.completed()) {
+  while (!p.completed())
+  {
     std::getline(input, s);
     s += '\n';
     unparsed_input += s;
-    try {
+    try
+    {
       p.parse_next(s);
-    } catch (std::runtime_error& e) {
-      if (handle_errors_) {
+    }
+    catch (std::runtime_error &e)
+    {
+      if (handle_errors_)
+      {
         output << "xeu: " << e.what() << std::endl;
         return p;
-      } else {
+      }
+      else
+      {
         throw;
       }
     }
-    if (!p.completed()) {
+    if (!p.completed())
+    {
       output << line_prefix_;
     }
   }
@@ -40,11 +49,11 @@ ParsingState StreamParser::parse(
 }
 
 ParsingState StreamParser::parse(
-  std::istream& input,
-  std::ostream& output
-) const {
+    std::istream &input,
+    std::ostream &output) const
+{
   std::string tmp;
   return parse(tmp, input, output);
 }
 
-};
+}; // namespace xeu_utils

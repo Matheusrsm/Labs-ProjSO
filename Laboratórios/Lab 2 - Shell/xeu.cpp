@@ -7,6 +7,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <thread>
 
 using namespace xeu_utils;
 using namespace std;
@@ -98,39 +99,53 @@ void commands_explanation(const vector<Command> &commands)
   }
 }
 
-int process(const vector<Command>& commands) {
+int process(const vector<Command> &commands)
+{
 
-	int status;
-	Command c;
-	c = commands[0];
-	pid_t pid = fork();
+  Command c = commands[0];
+  pid_t pid = fork();
 
-	if(pid == 0) {
-    	status = execvp(c.filename(), c.argv());
-    	printf("Unknown command status <%d>\n", status);
-  	}
+  if (pid == 0)
+  {
+    if (!strcmp(c.filename(), "bg"))
+    {
+      Command nc;
+      for (int i = 1; i < c.args().size(); i++)
+      {
+        nc.add_arg(c.argv()[i]);
+      }
+      execvp(nc.filename(), nc.argv());
+    }
 
-  	wait(NULL);
-  	return 0;
+    execvp(c.filename(), c.argv());
+  }
+
+  wait(NULL);
+  return 0;
 }
 
-bool exit(const vector<Command> &commands) {
-  for (int i = 0; i < commands.size(); i++) {
-    if (!strcmp(commands[i].filename(), "exit")) {
+bool exit(const vector<Command> &commands)
+{
+  for (int i = 0; i < commands.size(); i++)
+  {
+    if (!strcmp(commands[i].filename(), "exit"))
+    {
       return false;
     }
   }
   return true;
 }
 
-int main() {
+int main()
+{
 
-	vector<Command> commands = StreamParser().parse().commands();
+  vector<Command> commands = StreamParser().parse().commands();
 
-	while(exit(commands)) {
-		process(commands);
-		commands = StreamParser().parse().commands();
-	}
+  while (exit(commands))
+  {
+    process(commands);
+    commands = StreamParser().parse().commands();
+  }
 
-	return 0;
+  return 0;
 }
