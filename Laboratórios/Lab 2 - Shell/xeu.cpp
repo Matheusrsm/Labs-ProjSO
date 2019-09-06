@@ -7,14 +7,34 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <thread>
+#include <pthread.h>
 #include <utility>
+#include <mutex>
 
 using namespace xeu_utils;
 using namespace std;
 
 vector< pair<pid_t,Command> > jobs;
 mutex xeuMutex;
+
+void * wait_process (void * arg) {
+
+  pid_t pid = (pid_t) (size_t) arg;
+
+  waitpid(pid, NULL, 0);
+  int i = 0;
+  xeuMutex.lock();
+  while(i < jobs.size()){
+    if (jobs[i].first == pid) {
+      jobs.erase(jobs.begin() + i);
+      break;
+    }
+    i++;
+  }
+  xeuMutex.unlock();
+
+  pthread_exit(0);
+}
 
 void waitProcess(pid_t pid) {
   waitpid(pid, NULL, 0);
@@ -65,16 +85,15 @@ void xjobs() {
 }
 
 Command getBgCommand(Command cm) {
-  auto bgCm = Command();
-  auto args = vector<string>(cm.args());
-  args.erase(args.begin());
-  for (auto arg : args) bgCm.add_arg(arg);
+  
   return cm;
 }
 
 int main() {
 
   auto cms = StreamParser().parse().commands();
+  pthread_t thread;
+  int i = 0;
 
   while (exit(cms)) {
     Command cm = cms[0];
@@ -82,15 +101,22 @@ int main() {
     if (!strcmp(cm.filename(), "xjobs")) {
       xjobs();
     } else if (!strcmp(cm.filename(), "bg")) {
-      auto bgCm = getBgCommand(cm);
+      auto bgCm = Command();
+      auto args = vector<string>(cm.args());
+      args.erase(args.begin());
+      
+      for (auto arg : args) bgCm.add_arg(arg);
+      
       pid_t pid = exec(bgCm);
 
       xeuMutex.lock();
       jobs.push_back(make_pair(pid, bgCm));
       xeuMutex.unlock();
       
-      thread workerThread(waitProcess, pid);
-      workerThread.detach();
+      pthread_create(&thread, NULL, wait_process, (void *) pid);
+      
+      //thread workerThread(waitProcess, pid);
+      //workerThread.detach();
     } else {
       pid_t pid = exec(cm);
       waitpid(pid, NULL, 0);
