@@ -7,7 +7,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <pthread.h>
+#include <thread>
 #include <utility>
 #include <mutex>
 
@@ -16,25 +16,6 @@ using namespace std;
 
 vector< pair<pid_t,Command> > jobs;
 mutex xeuMutex;
-
-void * wait_process (void * arg) {
-
-  pid_t pid = (pid_t) (size_t) arg;
-
-  waitpid(pid, NULL, 0);
-  int i = 0;
-  xeuMutex.lock();
-  while(i < jobs.size()){
-    if (jobs[i].first == pid) {
-      jobs.erase(jobs.begin() + i);
-      break;
-    }
-    i++;
-  }
-  xeuMutex.unlock();
-
-  pthread_exit(0);
-}
 
 void waitProcess(pid_t pid) {
   waitpid(pid, NULL, 0);
@@ -72,9 +53,9 @@ pid_t exec(Command cm) {
 
 bool exit(const vector<Command> cms) {
   for (int i = 0; i < cms.size(); i++)
-    if (!strcmp(cms[i].filename(), "exit")) return false;
+    if (cms[i].name() == "exit") return true;
   
-  return true;
+  return false;
 }
 
 void xjobs() {
@@ -85,45 +66,37 @@ void xjobs() {
 }
 
 Command getBgCommand(Command cm) {
-  
-  return cm;
+  auto bgCm = Command();
+  auto args = vector<string>(cm.args());
+  args.erase(args.begin());    
+  for (auto arg : args) bgCm.add_arg(arg);
+  return bgCm;
 }
 
 int main() {
-
-  auto cms = StreamParser().parse().commands();
-  pthread_t thread;
-  int i = 0;
-
-  while (exit(cms)) {
+  while (true) {
+    cout << "> ";
+    auto cms = StreamParser().parse().commands();
+    if(exit(cms)) break;
     Command cm = cms[0];
 
-    if (!strcmp(cm.filename(), "xjobs")) {
+    if (cm.name() == "xjobs") {
       xjobs();
-    } else if (!strcmp(cm.filename(), "bg")) {
-      auto bgCm = Command();
-      auto args = vector<string>(cm.args());
-      args.erase(args.begin());
-      
-      for (auto arg : args) bgCm.add_arg(arg);
+    } else if (cm.name() == "bg") {
+      auto bgCm = getBgCommand(cm);
       
       pid_t pid = exec(bgCm);
 
       xeuMutex.lock();
       jobs.push_back(make_pair(pid, bgCm));
       xeuMutex.unlock();
-      
-      pthread_create(&thread, NULL, wait_process, (void *) pid);
-      
-      //thread workerThread(waitProcess, pid);
-      //workerThread.detach();
+
+      thread workerThread(waitProcess, pid);
+      workerThread.detach();
     } else {
       pid_t pid = exec(cm);
       waitpid(pid, NULL, 0);
     }
-
-    wait(NULL);
-    cms = StreamParser().parse().commands();
   }
 
   return 0;

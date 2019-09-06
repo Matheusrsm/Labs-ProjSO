@@ -1,5 +1,5 @@
 xeu: *.cpp xeu-utils
-	g++ -lpthread *.cpp *.o -o xeu
+	g++ *.cpp *.o -pthread -o xeu
 	rm -f *.o
 
 test: xeu-utils-tests xeu_utils/__tests__/__lib__/main.cpp
