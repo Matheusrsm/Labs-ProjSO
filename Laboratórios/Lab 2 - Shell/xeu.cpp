@@ -14,17 +14,20 @@ using namespace xeu_utils;
 using namespace std;
 
 vector< pair<pid_t,Command> > jobs;
+mutex xeuMutex;
 
-void wait_process(pid_t pid) {
+void waitProcess(pid_t pid) {
   waitpid(pid, NULL, 0);
   int i = 0;
+  xeuMutex.lock();
   while(i < jobs.size()){
-    if(jobs[i].first == pid) {
+    if (jobs[i].first == pid) {
       jobs.erase(jobs.begin() + i);
       break;
     }
     i++;
   }
+  xeuMutex.unlock();
 }
 
 pid_t exec(Command cm) {
@@ -55,8 +58,18 @@ bool exit(const vector<Command> cms) {
 }
 
 void xjobs() {
+  xeuMutex.lock();
   for (auto job : jobs)
     cout << "pid: " << job.first << " | command: " << " " << job.second.repr() << endl;
+  xeuMutex.unlock();
+}
+
+Command getBgCommand(Command cm) {
+  auto bgCm = Command();
+  auto args = vector<string>(cm.args());
+  args.erase(args.begin());
+  for (auto arg : args) bgCm.add_arg(arg);
+  return cm;
 }
 
 int main() {
@@ -69,17 +82,15 @@ int main() {
     if (!strcmp(cm.filename(), "xjobs")) {
       xjobs();
     } else if (!strcmp(cm.filename(), "bg")) {
-      auto bgCm = Command();
-      auto args = vector<string>(cm.args());
-      
-      args.erase(args.begin());
-
-      for (auto arg : args) bgCm.add_arg(arg);
-
+      auto bgCm = getBgCommand(cm);
       pid_t pid = exec(bgCm);
+
+      xeuMutex.lock();
       jobs.push_back(make_pair(pid, bgCm));
-      //thread t(wait_process, pid);
-      //t.detach();
+      xeuMutex.unlock();
+      
+      thread workerThread(waitProcess, pid);
+      workerThread.detach();
     } else {
       pid_t pid = exec(cm);
       waitpid(pid, NULL, 0);
