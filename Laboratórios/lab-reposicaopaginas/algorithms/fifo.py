@@ -7,19 +7,21 @@
 # NOTE: there may be methods you don't need to modify, you must decide what
 # you need...
 
+
 class FIFO:
 
-  def __init__(self):
-    pass
+    def __init__(self):
+        from Queue import Queue
+        self.queue = Queue()
 
-  def put(self, frameId):
-    pass
+    def put(self, frameId):
+        self.queue.put(frameId)
 
-  def evict(self):
-    pass
+    def evict(self):
+        self.queue.get()
 
-  def clock(self):
-    pass
+    def clock(self):
+        pass
 
-  def access(self, frameId, isWrite):
-    pass
+    def access(self, frameId, isWrite):
+        pass
