@@ -1,6 +1,7 @@
 from .strategy import *
 
 class FIFO(Strategy):
+  
   def __init__(self):
     self.queue = []
 
