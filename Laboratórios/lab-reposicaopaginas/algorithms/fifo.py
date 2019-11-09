@@ -1,27 +1,17 @@
-# This is the file where you must implement the FIFO algorithm
+from .strategy import *
 
-# This file will be imported from the main code. The PhysicalMemory class
-# will be instantiated with the algorithm received from the input. You may edit
-# this file as you wish
+class FIFO(Strategy):
+  def __init__(self):
+    self.queue = []
 
-# NOTE: there may be methods you don't need to modify, you must decide what
-# you need...
+  def put(self, frameId):
+    self.queue.append(frameId)
 
+  def evict(self):
+    return self.queue.pop(0)
 
-class FIFO:
+  def clock(self):
+    pass
 
-    def __init__(self):
-        from Queue import Queue
-        self.queue = Queue()
-
-    def put(self, frameId):
-        self.queue.put(frameId)
-
-    def evict(self):
-        self.queue.get()
-
-    def clock(self):
-        pass
-
-    def access(self, frameId, isWrite):
-        pass
+  def access(self, frameId, isWrite):
+    pass

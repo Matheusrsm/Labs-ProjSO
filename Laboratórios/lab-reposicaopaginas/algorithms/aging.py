@@ -8,21 +8,39 @@
 # you need...
 
 ALGORITHM_AGING_NBITS = 8
-"""How many bits to use for the Aging algorithm"""
+from .strategy import *
 
-class Aging:
+class Aging(Strategy):
 
   def __init__(self):
-    pass
-
+    self.nbits = ALGORITHM_AGING_NBITS
+    self.frames = []
+    
   def put(self, frameId):
-    pass
+    frame = Frame(frameId)
+    frame.counter = 1
+    self.frames.append(frame)
 
   def evict(self):
-    pass
+    frameIndex = 0
+    minimum = self.frames[frameIndex].counter
+    for i in range(len(self.frames)):
+      counter = self.frames[i].counter
+      if counter < minimum:
+        frameIndex = i
+        minimum = counter
 
-  def clock(self):
-    pass
-
+    frame = self.frames[frameIndex]
+    self.frames.pop(frameIndex)
+    return frame.frameId    
+  
   def access(self, frameId, isWrite):
-    pass
+    for frame in self.frames:
+      if frame.frameId == frameId:
+        leftbit = 2 ** self.nbits
+        frame.counter |= leftbit
+        break
+ 
+  def clock(self):
+    for frame in self.frames:
+      frame.counter >>= 1
