@@ -18,10 +18,7 @@ class SecondChance(FIFO):
             self.put(frame.frameId)
         else:
             return frame.frameId
-
-  def clock(self):
-    pass
-
+          
   def access(self, frameId, isWrite):
     for frame in self.queue:
         if frame.frameId == frameId:
