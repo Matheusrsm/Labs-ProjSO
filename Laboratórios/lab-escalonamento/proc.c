@@ -6,6 +6,8 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#define IS_PROBABILISTIC 0
+#define MAX_TICKETS 32
 
 struct {
   struct spinlock lock;
@@ -38,10 +40,10 @@ struct cpu*
 mycpu(void)
 {
   int apicid, i;
-  
+
   if(readeflags()&FL_IF)
     panic("mycpu called with interrupts enabled\n");
-  
+
   apicid = lapicid();
   // APIC IDs are not guaranteed to be contiguous. Maybe we should have
   // a reverse map, or reserve a register to store &cpus[i].
@@ -88,6 +90,10 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->priority = 20;    //default
+  p->schedulepriority = p->priority;
+  p->usage = 0;
+
 
   release(&ptable.lock);
 
@@ -124,7 +130,7 @@ userinit(void)
   extern char _binary_initcode_start[], _binary_initcode_size[];
 
   p = allocproc();
-  
+
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
     panic("userinit: out of memory?");
@@ -217,6 +223,8 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&ptable.lock);
+  for (int i = 0; i < 32; ++i)
+    np->mapcalls[i] = 0;
 
   return pid;
 }
@@ -275,7 +283,7 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
-  
+
   acquire(&ptable.lock);
   for(;;){
     // Scan through table looking for exited children.
@@ -311,6 +319,66 @@ wait(void)
   }
 }
 
+unsigned long RANDOM_SEED = 42;
+
+int 
+rand(int M) 
+{
+  unsigned long a = 924844033, c = 10011;
+  RANDOM_SEED = a * RANDOM_SEED + c + ticks; 
+  return ((unsigned int)(RANDOM_SEED / 65536) % 32768) % M ;
+}
+
+inline void redistribute(int *ticket_owners, int *total_tickets, int *available_tickets) {
+  *total_tickets = 0;
+  struct proc *p;
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if (p->state == RUNNABLE) {
+      for (int i = 0; i < MAX_TICKETS - p->schedulepriority; ++i) {
+        ticket_owners[(*total_tickets)++] = p->pid;
+      }
+    }
+  }
+  *available_tickets = *total_tickets;
+}
+
+// Schedulers Implementation down below
+
+struct proc *
+deterministic_schedule(struct proc *p) 
+{
+  struct proc *paux;
+  struct proc *highpriorityproc = p;
+  for (paux = ptable.proc; paux < &ptable.proc[NPROC]; paux++){
+      if (paux->state == RUNNABLE  &&  paux->schedulepriority < highpriorityproc->schedulepriority) {
+          highpriorityproc = paux;
+      }
+  }
+  return highpriorityproc;
+}
+
+int callid = 0;
+
+struct proc *
+probabilistic_schedule(int *ticket_owners, int *total_tickets, int *available_tickets)
+{
+  if ((*available_tickets) * 2 <= (*total_tickets)) {
+    redistribute(ticket_owners, total_tickets, available_tickets);
+  }
+  int ticket = rand(*total_tickets);
+  int lucky_pid = ticket_owners[ticket];
+  (*available_tickets)--;
+  
+  struct proc *paux;
+  for (paux = ptable.proc; paux < &ptable.proc[NPROC]; paux++){
+      if (paux->pid == lucky_pid) {
+          if (paux->state == RUNNABLE) return paux;
+          else break;
+      }
+  }
+  return probabilistic_schedule(ticket_owners, total_tickets, available_tickets);
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -325,26 +393,57 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+
+  // SCHEULING DATA
+  int count = 0; // ttl for increasing proccess priorities
+  int ticket_owners[NPROC * MAX_TICKETS];
+  int total_tickets = 0;
+  int available_tickets = 0;
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
 
+      count++;
+      if (count >= 150) {
+        // decrement prio
+        for (p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            if (p->state == RUNNABLE) {
+                p->schedulepriority--;
+                if (p->schedulepriority < 0) p->schedulepriority = 0;
+            } else if (p->state == SLEEPING) {
+                p->schedulepriority = p->schedulepriority / 2;
+            }
+        }
+        count = 0;
+      }
+      if (IS_PROBABILISTIC) {
+        p = probabilistic_schedule(ticket_owners, &total_tickets, &available_tickets);
+      } else {
+        p = deterministic_schedule(p);
+      }
+      
+      // when a proccess is choosen, it's priority should reset
+      p->schedulepriority = p->priority;
+      
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
       c->proc = p;
-      switchuvm(p);
+      switchuvm(p);         // Switch to the process page table
       p->state = RUNNING;
-
+      p->usage++;
+      
       swtch(&(c->scheduler), p->context);
-      switchkvm();
+      switchkvm();    //  Switch h/w page table register to the kernel-only page table,
+                      // for when no process is running.
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
@@ -418,7 +517,7 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
+
   if(p == 0)
     panic("sleep");
 
@@ -531,4 +630,71 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+int
+getpriority(int pid)
+{
+  struct proc *p;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      release(&ptable.lock);
+      return p->priority;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+
+int
+setpriority(int pid, int priority)
+{
+  struct proc *p;
+  int oldpriority = -1;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      oldpriority = p->priority;
+      p->priority = priority;
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return oldpriority;
+}
+
+int getusage(int pid) {
+  struct proc *p;
+  int usage = -1;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      usage = p->usage;
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return usage;
+}
+
+int trace(int pid, int syscall_id) {
+  struct proc *p;
+  int result = -1;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      result = p->mapcalls[syscall_id];
+      break;
+    }
+  }
+  release(&ptable.lock);
+  return result;
+}
+
+struct proc *getptable_proc(void) {
+  return ptable.proc;
 }
