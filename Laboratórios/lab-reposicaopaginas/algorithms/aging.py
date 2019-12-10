@@ -1,37 +1,54 @@
-ALGORITHM_AGING_NBITS = 8
-from .strategy import *
+# This is the file where you must implement the Aging algorithm
 
-class Aging(Strategy):
+# This file will be imported from the main code. The PhysicalMemory class
+# will be instantiated with the algorithm received from the input. You may edit
+# this file as you whish
+
+# NOTE: there may be methods you don't need to modify, you must decide what
+# you need...
+
+ALGORITHM_AGING_NBITS = 8
+"""How many bits to use for the Aging algorithm"""
+
+class Aging:
 
   def __init__(self):
-    self.nbits = ALGORITHM_AGING_NBITS
-    self.frames = []
-    
+    self.pages = []
+    self.references = {}
+
   def put(self, frameId):
-    frame = Frame(frameId)
-    frame.counter = 1
-    self.frames.append(frame)
+    self.pages.append({
+        'frameId': frameId,
+        'bits': 1 << ALGORITHM_AGING_NBITS
+      })
 
   def evict(self):
-    frameIndex = 0
-    minimum = self.frames[frameIndex].counter
-    for i in range(len(self.frames)):
-      counter = self.frames[i].counter
-      if counter < minimum:
-        frameIndex = i
-        minimum = counter
+    minimum = 1 << (ALGORITHM_AGING_NBITS + 1)
+    chosen = None
 
-    frame = self.frames[frameIndex]
-    self.frames.pop(frameIndex)
-    return frame.frameId    
-  
-  def access(self, frameId, isWrite):
-    for frame in self.frames:
-      if frame.frameId == frameId:
-        leftbit = 2 ** self.nbits
-        frame.counter |= leftbit
-        break
- 
+    for page in self.pages:
+      bits = page['bits']
+      if bits < minimum:
+        minimum = bits
+        chosen = page
+
+    if chosen is None:
+      return -1
+
+    self.pages.remove(chosen)
+
+    return chosen['frameId']
+
   def clock(self):
-    for frame in self.frames:
-      frame.counter >>= 1
+    for page in self.pages:
+      bit = 0
+
+      if page['frameId'] in self.references:
+        bit = 1
+
+      page['bits'] = (bit << ALGORITHM_AGING_NBITS) + (page['bits'] >> 1)
+
+    self.references = {}
+
+  def access(self, frameId, isWrite):
+    self.references[frameId] = 1

@@ -10,8 +10,8 @@ do
     do
         for nframes in 4 8 16 32
         do
-	    mkdir output/$trace
-	    python memory_simulation.py $npages $nframes $alg $clock < load/$trace.in > output/$trace/$trace.$alg.$nframes.out
+	    mkdir -p output/$trace
+	    python3 memory_simulation.py $npages $nframes $alg $clock < load/$trace.in > output/$trace/$trace.$alg.$nframes.out
 	done
     done
 done

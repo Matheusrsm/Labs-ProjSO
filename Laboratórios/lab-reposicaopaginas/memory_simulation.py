@@ -48,4 +48,4 @@ if __name__ == "__main__":
     clock = int(sys.argv[4])
 
     fault_counter = Simulation(alg_name, num_pages, num_frames, clock).run_simulation()
-    print fault_counter, num_frames, alg_name
+    print(fault_counter, num_frames, alg_name)

@@ -1,33 +1,29 @@
-from .strategy import *
+# This is the file where you must implement the LRU algorithm
 
-class LRU(Strategy):
+# This file will be imported from the main code. The PhysicalMemory class
+# will be instantiated with the algorithm received from the input. You may edit
+# this file as you wish
+
+# NOTE: there may be methods you don't need to modify, you must decide what
+# you need...
+
+class LRU:
 
   def __init__(self):
     self.frames = []
-    self.timer = 0
-    
-  def put(self, frameId):
-    self.timer += 1
-    frame = Frame(frameId)
-    frame.timer = self.timer
-    self.frames.append(frame)
+
+  def put(self, frame_id):
+    self.frames.append(frame_id)
 
   def evict(self):
-    frameIndex = 0
-    minimum = self.frames[frameIndex].timer
-    for i in range(len(self.frames)):
-      timer = self.frames[i].timer
-      if timer < minimum:
-        frameIndex = i
-        minimum = timer
+    return self.frames.pop(0)
 
-    frame = self.frames[frameIndex]
-    self.frames.pop(frameIndex)
-    return frame.frameId
-  
-  def access(self, frameId, isWrite):
-    self.timer += 1
-    for frame in self.frames:
-      if frame.frameId == frameId:
-        frame.timer = self.timer
+  def clock(self):
+    pass
+
+  def access(self, frame_id, is_write):
+    for i in range(len(self.frames)):
+      if self.frames[i] == frame_id:
+        self.frames.pop(i)
+        self.frames.append(frame_id)
         break
